@@ -64,6 +64,7 @@ setup(
         "dbt-core>=1.8.0",
         # installed via dbt-core but referenced directly; don't pin to avoid version conflicts with dbt-core
         "agate",
+        "shandy-sqlfmt[jinjafmt]~=0.21.0",
     ],
     zip_safe=False,
     classifiers=[

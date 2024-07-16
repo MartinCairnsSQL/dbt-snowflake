@@ -1,0 +1,6 @@
+kind: Features
+body: Add full support for Dynamic Tables (Transient, Time Travel, Cluster By, Only recreate on DDL change)
+time: 2024-07-16T11:41:25.2964083+01:00
+custom:
+    Author: MartinCairnsSQL
+    Issue: "1089"

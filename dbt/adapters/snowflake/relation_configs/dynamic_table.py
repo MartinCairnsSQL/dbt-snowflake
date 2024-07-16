@@ -57,6 +57,9 @@ class SnowflakeDynamicTableConfig(SnowflakeRelationConfigBase):
     snowflake_warehouse: str
     refresh_mode: Optional[RefreshMode] = RefreshMode.default()
     initialize: Optional[Initialize] = Initialize.default()
+    transient: Optional[bool] = None
+    time_travel: Optional[int] = None
+    cluster_by: Optional[str] = None
 
     @classmethod
     def from_dict(cls, config_dict) -> "SnowflakeDynamicTableConfig":
@@ -71,6 +74,9 @@ class SnowflakeDynamicTableConfig(SnowflakeRelationConfigBase):
             "snowflake_warehouse": config_dict.get("snowflake_warehouse"),
             "refresh_mode": config_dict.get("refresh_mode"),
             "initialize": config_dict.get("initialize"),
+            "transient": config_dict.get("transient"),
+            "time_travel": config_dict.get("time_travel"),
+            "cluster_by": config_dict.get("cluster_by"),
         }
 
         dynamic_table: "SnowflakeDynamicTableConfig" = super().from_dict(kwargs_dict)
@@ -85,6 +91,9 @@ class SnowflakeDynamicTableConfig(SnowflakeRelationConfigBase):
             "query": relation_config.compiled_code,
             "target_lag": relation_config.config.extra.get("target_lag"),
             "snowflake_warehouse": relation_config.config.extra.get("snowflake_warehouse"),
+            "time_travel": relation_config.config.extra.get("time_travel"),
+            "transient": relation_config.config.extra.get("transient"),
+            "cluster_by": relation_config.config.extra.get("cluster_by"),
         }
 
         if refresh_mode := relation_config.config.extra.get("refresh_mode"):
@@ -92,6 +101,10 @@ class SnowflakeDynamicTableConfig(SnowflakeRelationConfigBase):
 
         if initialize := relation_config.config.extra.get("initialize"):
             config_dict.update(initialize=initialize.upper())
+
+        if target_lag := relation_config.config.extra.get("target_lag"):
+            if target_lag == "downstream":
+                config_dict.update(target_lag=target_lag.upper())
 
         return config_dict
 
@@ -108,6 +121,9 @@ class SnowflakeDynamicTableConfig(SnowflakeRelationConfigBase):
             "snowflake_warehouse": dynamic_table.get("warehouse"),
             "refresh_mode": dynamic_table.get("refresh_mode"),
             # we don't get initialize since that's a one-time scheduler attribute, not a DT attribute
+            "transient": dynamic_table.get("transient"),
+            "time_travel": dynamic_table.get("time_travel"),
+            "cluster_by": dynamic_table.get("cluster_by"), # Get inner values from "LINEAR()"
         }
 
         return config_dict
@@ -140,26 +156,66 @@ class SnowflakeDynamicTableRefreshModeConfigChange(RelationConfigChange):
         return True
 
 
+@dataclass(frozen=True, eq=True, unsafe_hash=True)
+class SnowflakeDynamicTableTransientConfigChange(RelationConfigChange):
+    context: Optional[str] = None
+
+    @property
+    def requires_full_refresh(self) -> bool:
+        return True
+
+
+@dataclass(frozen=True, eq=True, unsafe_hash=True)
+class SnowflakeDynamicTableQueryConfigChange(RelationConfigChange):
+    context: Optional[str] = None
+
+    @property
+    def requires_full_refresh(self) -> bool:
+        return True
+
+
+@dataclass(frozen=True, eq=True, unsafe_hash=True)
+class SnowflakeDynamicTableTimeTravelConfigChange(RelationConfigChange):
+    context: Optional[str] = None
+
+    @property
+    def requires_full_refresh(self) -> bool:
+        return True
+    
+
+@dataclass(frozen=True, eq=True, unsafe_hash=True)
+class SnowflakeDynamicTableClusterByConfigChange(RelationConfigChange):
+    context: Optional[str] = None
+
+    @property
+    def requires_full_refresh(self) -> bool:
+        return True
+
+
 @dataclass
 class SnowflakeDynamicTableConfigChangeset:
     target_lag: Optional[SnowflakeDynamicTableTargetLagConfigChange] = None
     snowflake_warehouse: Optional[SnowflakeDynamicTableWarehouseConfigChange] = None
     refresh_mode: Optional[SnowflakeDynamicTableRefreshModeConfigChange] = None
+    transient: Optional[SnowflakeDynamicTableTransientConfigChange] = None
+    query: Optional[SnowflakeDynamicTableQueryConfigChange] = None
+    time_travel: Optional[SnowflakeDynamicTableTimeTravelConfigChange] = None
+    cluster_by: Optional[SnowflakeDynamicTableClusterByConfigChange] = None
 
     @property
     def requires_full_refresh(self) -> bool:
         return any(
             [
                 self.target_lag.requires_full_refresh if self.target_lag else False,
-                (
-                    self.snowflake_warehouse.requires_full_refresh
-                    if self.snowflake_warehouse
-                    else False
-                ),
+                self.snowflake_warehouse.requires_full_refresh if self.snowflake_warehouse else False,
                 self.refresh_mode.requires_full_refresh if self.refresh_mode else False,
+                self.transient.requires_full_refresh if self.transient else False,
+                self.query.requires_full_refresh if self.query else False,
+                self.time_travel.requires_full_refresh if self.time_travel else False,
+                self.cluster_by.requires_full_refresh if self.cluster_by else False, 
             ]
         )
 
     @property
     def has_changes(self) -> bool:
-        return any([self.target_lag, self.snowflake_warehouse, self.refresh_mode])
+        return any([self.target_lag, self.snowflake_warehouse, self.refresh_mode, self.transient, self.query, self.time_travel, self.cluster_by])
