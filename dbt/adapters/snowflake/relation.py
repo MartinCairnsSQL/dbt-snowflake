@@ -111,7 +111,7 @@ class SnowflakeRelation(BaseRelation):
                 context=new_dynamic_table.transient,
             )
 
-        if has_snowflake_query_sql_changed(new_dynamic_table.query, existing_dynamic_table.query):
+        if cls.has_snowflake_query_sql_changed(new_dynamic_table.query, existing_dynamic_table.query):
             config_change_collection.query = SnowflakeDynamicTableQueryConfigChange(
                 action=RelationConfigChangeAction.create,
                 context=new_dynamic_table.query,
@@ -135,25 +135,26 @@ class SnowflakeRelation(BaseRelation):
 
         return self.replace_path(**path_part_map)
 
-def has_snowflake_query_sql_changed(new_sql, existing_sql) -> bool:
-    import re 
-    from sqlfmt.api import format_string, Mode as sqlfmt_Mode
+    @staticmethod
+    def has_snowflake_query_sql_changed(new_sql, existing_sql) -> bool:
+        import re 
+        from sqlfmt.api import format_string, Mode as sqlfmt_Mode
 
-    mode = sqlfmt_Mode(line_length=88, fast=False)
-    new_select = format_string(new_sql, mode)
+        mode = sqlfmt_Mode(line_length=88, fast=False)
+        new_select = format_string(new_sql, mode)
 
-    inner_select_re = r"\s+as\s+\(\s+(?P<sql>.*)\)"
-    matches = re.search(inner_select_re, existing_sql, re.IGNORECASE | re.DOTALL)
-    inner_sql = matches["sql"]
+        inner_select_re = r"\s+as\s+\(\s+(?P<sql>.*)\)"
+        matches = re.search(inner_select_re, existing_sql, re.IGNORECASE | re.DOTALL)
+        inner_sql = matches["sql"]
 
-    if len(inner_sql) == 0 or not (inner_sql.startswith("select") or inner_sql.startswith("with")):
-        raise Exception("Failed to find inner sql from definition ")
-    
-    old_select = format_string(inner_sql, mode)
+        if len(inner_sql) == 0 or not (inner_sql.startswith("select") or inner_sql.startswith("with")):
+            raise Exception("Failed to find inner sql from definition ")
+        
+        old_select = format_string(inner_sql, mode)
 
-    if old_select != new_select:
-        print("OLD:", old_select, "NEW:", new_select)
-        breakpoint()
-        return True
+        if old_select != new_select:
+            print("OLD:", old_select, "NEW:", new_select)
+            breakpoint()
+            return True
 
-    return False
+        return False
