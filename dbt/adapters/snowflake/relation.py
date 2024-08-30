@@ -153,8 +153,6 @@ class SnowflakeRelation(BaseRelation):
         old_select = format_string(inner_sql, mode)
 
         if old_select != new_select:
-            print("OLD:", old_select, "NEW:", new_select)
-            breakpoint()
             return True
 
         return False
