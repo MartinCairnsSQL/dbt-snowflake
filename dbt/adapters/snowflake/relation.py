@@ -85,13 +85,13 @@ class SnowflakeRelation(BaseRelation):
 
         config_change_collection = SnowflakeDynamicTableConfigChangeset()
 
-        if new_dynamic_table.target_lag != existing_dynamic_table.target_lag:
+        if new_dynamic_table.target_lag.casefold() != existing_dynamic_table.target_lag.casefold():
             config_change_collection.target_lag = SnowflakeDynamicTableTargetLagConfigChange(
                 action=RelationConfigChangeAction.alter,
                 context=new_dynamic_table.target_lag,
             )
 
-        if new_dynamic_table.snowflake_warehouse != existing_dynamic_table.snowflake_warehouse:
+        if new_dynamic_table.snowflake_warehouse.casefold() != existing_dynamic_table.snowflake_warehouse.casefold():
             config_change_collection.snowflake_warehouse = (
                 SnowflakeDynamicTableWarehouseConfigChange(
                     action=RelationConfigChangeAction.alter,
@@ -99,7 +99,7 @@ class SnowflakeRelation(BaseRelation):
                 )
             )
 
-        if new_dynamic_table.refresh_mode != existing_dynamic_table.refresh_mode and new_dynamic_table.refresh_mode != 'AUTO':
+        if new_dynamic_table.refresh_mode.casefold() != existing_dynamic_table.refresh_mode.casefold() and new_dynamic_table.refresh_mode != 'AUTO':
             config_change_collection.refresh_mode = SnowflakeDynamicTableRefreshModeConfigChange(
                 action=RelationConfigChangeAction.create,
                 context=new_dynamic_table.refresh_mode,
@@ -111,7 +111,7 @@ class SnowflakeRelation(BaseRelation):
                 context=new_dynamic_table.transient,
             )
 
-        if cls.has_snowflake_query_sql_changed(new_dynamic_table.query, existing_dynamic_table.query):
+        if cls.has_snowflake_query_sql_changed(existing_dynamic_table.query, new_dynamic_table.query):
             config_change_collection.query = SnowflakeDynamicTableQueryConfigChange(
                 action=RelationConfigChangeAction.create,
                 context=new_dynamic_table.query,
@@ -136,23 +136,23 @@ class SnowflakeRelation(BaseRelation):
         return self.replace_path(**path_part_map)
 
     @staticmethod
-    def has_snowflake_query_sql_changed(new_sql, existing_sql) -> bool:
-        import re 
-        from sqlfmt.api import format_string, Mode as sqlfmt_Mode
+    def has_snowflake_query_sql_changed(existing_sql, new_sql) -> bool:
+        from sqlglot import parse_one, exp, diff
+        from sqlglot.diff import Insert, Remove, Keep, Update
 
-        mode = sqlfmt_Mode(line_length=88, fast=False)
-        new_select = format_string(new_sql, mode)
+        existing_ast = parse_one(existing_sql, read='snowflake').find(exp.Select)
+        new_ast = parse_one(new_sql, read='snowflake')
 
-        inner_select_re = r"\s+as\s+\(\s+(?P<sql>.*)\)"
-        matches = re.search(inner_select_re, existing_sql, re.IGNORECASE | re.DOTALL)
-        inner_sql = matches["sql"]
+        delta = diff(existing_ast, new_ast)
 
-        if len(inner_sql) == 0 or not (inner_sql.startswith("select") or inner_sql.startswith("with")):
-            raise Exception("Failed to find inner sql from definition ")
-        
-        old_select = format_string(inner_sql, mode)
+        changed_expressions = [e for e in delta if not isinstance(e, Keep)]
 
-        if old_select != new_select:
+        if len(changed_expressions) != 0:
+            for change in changed_expressions:
+                if isinstance(change, Update):
+                    print('\tfrom: "', change.target.sql(), '" to "', change.source.sql(), '"')
+                else:
+                    print(f"{type(change)}: ", change)
             return True
 
         return False
